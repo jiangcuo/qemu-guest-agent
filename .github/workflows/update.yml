@@ -1,0 +1,47 @@
+name: Update QEMU
+
+on:
+  schedule:
+    - cron: '41 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Explicit QEMU version (e.g. 11.1.2), empty for the latest release
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: update
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: scripts/update-version.sh $VERSION_INPUT
+
+      - id: commit
+        if: steps.update.outputs.changed == 'true'
+        env:
+          MESSAGE: ${{ steps.update.outputs.message }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "$MESSAGE"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.update.outputs.sha }}
+      release: true

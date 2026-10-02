@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QEMU guest agent installer for WiX v5, based on qga/installer/qemu-ga.wxs from QEMU.
+
+  Variables:
+    Version       QEMU version
+    StageDir      directory with qemu-ga.exe and lib\ (DLLs, helpers, VSS provider)
+    Manufacturer  defaults to QEMU
+    Distro        defaults to Linux
+    InstallVss    set if the VSS provider is included
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <?ifndef Manufacturer?>
+    <?define Manufacturer="QEMU"?>
+  <?endif?>
+  <?ifndef Distro?>
+    <?define Distro="Linux"?>
+  <?endif?>
+
+  <!-- same UpgradeCode as the upstream installer, so it upgrades the virtio-win qemu-ga -->
+  <Package
+    Name="QEMU guest agent"
+    Manufacturer="$(var.Manufacturer)"
+    Version="$(var.Version)"
+    UpgradeCode="{EB6B8302-C06E-4BEC-ADAC-932C68A3A98D}"
+    Language="1033"
+    Scope="perMachine"
+    Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="Error: A newer version of QEMU guest agent is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="WHSLogo" Value="1" />
+    <Property Id="ARPNOMODIFY" Value="yes" Secure="yes" />
+    <Property Id="REINSTALLMODE" Value="amus" />
+    <Property Id="rundll" Value="rundll32.exe" />
+
+    <?ifdef InstallVss?>
+    <Property Id="VSSOPTION_VALUE" Value="#1">
+      <RegistrySearch Id="VssOptionSearch"
+                      Root="HKLM"
+                      Key="System\CurrentControlSet\Services\QEMU Guest Agent VSS Provider"
+                      Name="VssOption"
+                      Type="raw" />
+    </Property>
+    <?endif?>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="qemu_ga_directory" Name="Qemu-ga">
+        <Component Id="qemu_ga" Guid="{908B7199-DE2A-4DC6-A8D0-27A5AE444FEA}">
+          <File Id="qemu_ga.exe" Name="qemu-ga.exe" Source="$(var.StageDir)\qemu-ga.exe" KeyPath="yes" />
+          <ServiceInstall
+            Id="ServiceInstaller"
+            Type="ownProcess"
+            Vital="yes"
+            Name="QEMU-GA"
+            DisplayName="QEMU Guest Agent"
+            Description="QEMU Guest Agent"
+            Start="auto"
+            Account="LocalSystem"
+            ErrorControl="ignore"
+            Interactive="no"
+            Arguments="-d --retry-path" />
+          <ServiceControl Id="StartService" Start="install" Stop="both" Remove="uninstall" Name="QEMU-GA" Wait="yes" />
+        </Component>
+
+        <Files Include="$(var.StageDir)\lib\**" />
+
+        <Component Id="registry_entries" Guid="{62A2D9E2-B22F-410C-8E41-A0D9E653B944}">
+          <RegistryKey Root="HKLM" Key="Software\$(var.Manufacturer)\$(var.Distro)\Tools\QemuGA">
+            <RegistryValue Type="string" Name="ProductID" Value="fb0a0d66-c7fb-4e2e-a16b-c4a3bfe8d13b" />
+            <RegistryValue Type="string" Name="Version" Value="$(var.Version)" />
+          </RegistryKey>
+          <RegistryKey Root="HKLM" Key="System\CurrentControlSet\Services\EventLog\Application\qemu-ga">
+            <RegistryValue Type="integer" Name="TypesSupported" Value="7" />
+            <RegistryValue Type="string" Name="EventMessageFile" Value="[qemu_ga_directory]qemu-ga.exe" />
+          </RegistryKey>
+        </Component>
+
+        <?ifdef InstallVss?>
+        <Component Id="vss_registry_option" Guid="{75166af0-cdc9-423f-9a30-50bb59342b9b}">
+          <RegistryKey Root="HKLM" Key="System\CurrentControlSet\Services\QEMU Guest Agent VSS Provider">
+            <RegistryValue Type="string" Name="VssOption" Value="[VSSOPTION_VALUE]" KeyPath="yes" />
+          </RegistryKey>
+        </Component>
+        <?endif?>
+      </Directory>
+    </StandardDirectory>
+
+    <?ifdef InstallVss?>
+    <CustomAction Id="RegisterCom"
+                  ExeCommand="&quot;[qemu_ga_directory]qga-vss.dll&quot;,DLLCOMRegister"
+                  Execute="deferred"
+                  Property="rundll"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="UnRegisterCom"
+                  ExeCommand="&quot;[qemu_ga_directory]qga-vss.dll&quot;,DLLCOMUnregister"
+                  Execute="deferred"
+                  Property="rundll"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="UnRegisterCom_Rollback"
+                  ExeCommand="&quot;[qemu_ga_directory]qga-vss.dll&quot;,DLLCOMUnregister"
+                  Execute="rollback"
+                  Property="rundll"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="UnRegisterCom_Rollback" Sequence="5849" Condition="NOT REMOVE" />
+      <Custom Action="RegisterCom" Sequence="5850" Condition="NOT REMOVE" />
+      <Custom Action="UnRegisterCom" Sequence="1901" Condition="Installed" />
+    </InstallExecuteSequence>
+    <?endif?>
+  </Package>
+</Wix>
