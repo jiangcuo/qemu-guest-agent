@@ -35,10 +35,13 @@ jobs:
             runner: windows-latest
             msystem: UCRT64
             wixarch: x64
+            extra: ''
           - arch: arm64
             runner: windows-11-arm
             msystem: CLANGARM64
             wixarch: arm64
+            # for windmc, which LLVM does not provide
+            extra: mingw-w64-ucrt-x86_64-binutils
     runs-on: ${{ matrix.runner }}
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -54,7 +57,7 @@ jobs:
         with:
           msystem: ${{ matrix.msystem }}
           update: true
-          install: git make bison flex diffutils
+          install: git make bison flex diffutils ${{ matrix.extra }}
           pacboy: >-
             toolchain:p
             glib2:p

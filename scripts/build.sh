@@ -20,6 +20,20 @@ if [ ! -d "$src" ]; then
     git clone --depth 1 --branch "v$QEMU_VERSION" "$QEMU_GIT" "$src"
 fi
 
+# LLVM has no windmc; its output does not depend on the architecture, so use the one from
+# binutils of another MSYS2 environment, but do not put its other tools into PATH
+if ! command -v windmc >/dev/null; then
+    for prefix in /ucrt64 /mingw64; do
+        [ -x "$prefix/bin/windmc.exe" ] || continue
+        mkdir -p "$BUILDDIR/tools"
+        cp "$prefix/bin/windmc.exe" "$BUILDDIR/tools/"
+        MINGW_PREFIX=$prefix "$TOPDIR/scripts/collect-dlls.sh" "$BUILDDIR/tools" \
+            "$BUILDDIR/tools/windmc.exe"
+        export PATH="$BUILDDIR/tools:$PATH"
+        break
+    done
+fi
+
 cd "$src"
 mkdir -p build
 cd build
@@ -35,7 +49,7 @@ if [ ! -f build.ninja ]; then
         --enable-qga-vss \
         --disable-guest-agent-msi
 fi
-ninja
+ninja qemu-ga
 
 rm -rf "$STAGEDIR"
 mkdir -p "$STAGEDIR/lib"
