@@ -100,16 +100,28 @@ jobs:
 
       - name: Test MSI
         shell: pwsh
+        timeout-minutes: 10
         run: |
+          # Start-Process -Wait also waits for the msiexec server process, which lingers
+          function Invoke-Msiexec($arguments, $log) {
+            $p = Start-Process msiexec.exe -PassThru -ArgumentList "$arguments /qn /l*v $log"
+            if (-not $p.WaitForExit(300000)) {
+              Get-Content $log -Tail 80 -ErrorAction SilentlyContinue
+              Get-Service QEMU-GA -ErrorAction SilentlyContinue | Format-List Name, Status
+              throw "msiexec $arguments did not finish"
+            }
+            if ($p.ExitCode -ne 0) { Get-Content $log -Tail 80 }
+            return $p.ExitCode
+          }
           $msi = Resolve-Path out/qemu-ga-${{ matrix.arch }}.msi
-          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msi`" /qn /l*v install.log"
-          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; exit $p.ExitCode }
+          $rc = Invoke-Msiexec "/i `"$msi`"" install.log
+          if ($rc -ne 0) { exit $rc }
           Get-Service QEMU-GA | Format-List Name, Status, StartType
           & "$env:ProgramFiles\Qemu-ga\qemu-ga.exe" --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem "$env:ProgramFiles\Qemu-ga" | Format-Table Name, Length
-          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/x `"$msi`" /qn /l*v uninstall.log"
-          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; exit $p.ExitCode }
+          $rc = Invoke-Msiexec "/x `"$msi`"" uninstall.log
+          if ($rc -ne 0) { exit $rc }
           if (Get-Service QEMU-GA -ErrorAction SilentlyContinue) { throw "service still installed" }
 
       - uses: actions/upload-artifact@v4
