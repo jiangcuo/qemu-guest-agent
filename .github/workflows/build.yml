@@ -86,7 +86,8 @@ jobs:
             'build', 'installer/qemu-ga.wxs',
             '-arch', '${{ matrix.wixarch }}',
             '-d', "Version=$env:QEMU_VERSION",
-            '-d', 'StageDir=stage',
+            '-d', "StageDir=$PWD\stage",
+            '-wx',
             '-o', 'out/qemu-ga-${{ matrix.arch }}.msi'
           )
           if (Test-Path stage/lib/qga-vss.dll) {
@@ -104,7 +105,8 @@ jobs:
         run: |
           # Start-Process -Wait also waits for the msiexec server process, which lingers
           function Invoke-Msiexec($arguments, $log) {
-            $p = Start-Process msiexec.exe -PassThru -ArgumentList "$arguments /qn /l*v $log"
+            $log = Join-Path $PWD $log
+            $p = Start-Process msiexec.exe -PassThru -ArgumentList "$arguments /qn /l*v `"$log`""
             if (-not $p.WaitForExit(300000)) {
               Get-Content $log -Tail 80 -ErrorAction SilentlyContinue
               Get-Service QEMU-GA -ErrorAction SilentlyContinue | Format-List Name, Status
